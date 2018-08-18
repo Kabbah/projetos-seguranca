@@ -24,7 +24,7 @@ using namespace std;
 VernamCipher::VernamCipher(int keySize) : key(keySize) {
 	// Gera uma chave randômica
 	srand(time(NULL));
-	for (int i = 0; i < key.size(); ++i) {
+	for (unsigned int i = 0; i < key.size(); ++i) {
 		key[i] = rand() & 0xFF;
 	}
 }
@@ -62,7 +62,7 @@ void VernamCipher::saveKeyToFile(std::string filename) {
 /*----------------------------------------------------------------------------*/
 
 void VernamCipher::cipherBytes(vector<char> input, vector<char>& output) {
-	for (int i = 0; i < input.size(); ++i) {
+	for (unsigned int i = 0; i < input.size(); ++i) {
 		output[i] = input[i] ^ key[i];
 	}
 }
@@ -70,7 +70,7 @@ void VernamCipher::cipherBytes(vector<char> input, vector<char>& output) {
 /*----------------------------------------------------------------------------*/
 
 void VernamCipher::decipherBytes(vector<char> input, vector<char>& output) {
-	for (int i = 0; i < input.size(); ++i) {
+	for (unsigned int i = 0; i < input.size(); ++i) {
 		output[i] = input[i] ^ key[i];
 	}
 }
