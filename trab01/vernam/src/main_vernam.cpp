@@ -118,8 +118,8 @@ int main(int argc, char* argv[]) {
 		vernam.decipherBytes(data, deciphered);
 		
 		// Agora fazemos cout em todos os caracteres
-		for (int i = 0; i < ciphered.size(); ++i) {
-			cout << ciphered[i];
+		for (int i = 0; i < deciphered.size(); ++i) {
+			cout << deciphered[i];
 		}
 	}
 
