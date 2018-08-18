@@ -1,0 +1,3 @@
+A cifra de Cesar eh muito simples. Apenas soma uma chave (numero) em todos os
+caracteres. Por causa disso, eh vulneravel a ataques de analise de frequencia,
+ja que apenas "desloca" as porcentagens de acordo com a chave.
