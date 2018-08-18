@@ -37,15 +37,15 @@ VernamCipher::VernamCipher(std::string filename) {
 	keyFile.open(filename, ios::in | ios::binary);
 	
 	// Preenche o vetor interno com os bytes do arquivo
-	if (!file.eof() && !file.fail()) {
+	if (!keyFile.eof() && !keyFile.fail()) {
 		// Redimensiona o vetor
-		file.seekg(0, ios_base::end);
-		streampos fileSize = file.tellg();
+		keyFile.seekg(0, ios_base::end);
+		streampos fileSize = keyFile.tellg();
 		key.resize(fileSize);
 		
 		// Agora lê
-		file.seekg(0, ios_base::beg);
-		file.read(&key[0], fileSize);
+		keyFile.seekg(0, ios_base::beg);
+		keyFile.read(&key[0], fileSize);
 	}
 }
 
