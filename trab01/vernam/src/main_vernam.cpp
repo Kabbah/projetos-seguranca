@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
 		vernam.saveKeyToFile(keyFile);
 		
 		// Agora fazemos cout em todos os caracteres
-		for (int i = 0; i < ciphered.size(); ++i) {
+		for (unsigned int i = 0; i < ciphered.size(); ++i) {
 			cout << ciphered[i];
 		}
 	}
@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
 		
 		// Confere o tamanho da chave
 		if (vernam.getKeySize() < data.size()) {
-			cerr << "Erro: a chave é menor que o texto" < endl;
+			cerr << "Erro: a chave é menor que o texto" << endl;
 			return -1;
 		}
 		
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
 		vernam.decipherBytes(data, deciphered);
 		
 		// Agora fazemos cout em todos os caracteres
-		for (int i = 0; i < deciphered.size(); ++i) {
+		for (unsigned int i = 0; i < deciphered.size(); ++i) {
 			cout << deciphered[i];
 		}
 	}
