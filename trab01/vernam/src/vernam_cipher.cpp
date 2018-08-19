@@ -61,7 +61,7 @@ void VernamCipher::saveKeyToFile(std::string filename) {
 
 /*----------------------------------------------------------------------------*/
 
-void VernamCipher::cipherBytes(vector<char> input, vector<char>& output) {
+void VernamCipher::cipherBytes(vector<char>& input, vector<char>& output) {
 	for (unsigned int i = 0; i < input.size(); ++i) {
 		output[i] = input[i] ^ key[i];
 	}
@@ -69,7 +69,7 @@ void VernamCipher::cipherBytes(vector<char> input, vector<char>& output) {
 
 /*----------------------------------------------------------------------------*/
 
-void VernamCipher::decipherBytes(vector<char> input, vector<char>& output) {
+void VernamCipher::decipherBytes(vector<char>& input, vector<char>& output) {
 	for (unsigned int i = 0; i < input.size(); ++i) {
 		output[i] = input[i] ^ key[i];
 	}

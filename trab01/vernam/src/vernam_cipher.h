@@ -32,8 +32,8 @@ public:
 
 	void saveKeyToFile(std::string filename);
 	
-	void cipherBytes(std::vector<char> input, std::vector<char>& output);
-	void decipherBytes(std::vector<char> input, std::vector<char>& output);
+	void cipherBytes(std::vector<char>& input, std::vector<char>& output);
+	void decipherBytes(std::vector<char>& input, std::vector<char>& output);
 	
 	unsigned int getKeySize();
 

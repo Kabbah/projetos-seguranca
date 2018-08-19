@@ -29,7 +29,7 @@ class FreqAnalyzer {
 public:
 	FreqAnalyzer();
 
-	void feed(std::string str);
+	void feed(std::string& str);
 	void computeFrequencies();
 	void printFrequencies();
 	short findKey();

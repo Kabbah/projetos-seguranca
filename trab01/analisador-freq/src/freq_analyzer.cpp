@@ -35,7 +35,7 @@ FreqAnalyzer::FreqAnalyzer() {
 
 /*----------------------------------------------------------------------------*/
 
-void FreqAnalyzer::feed(std::string str) {
+void FreqAnalyzer::feed(std::string& str) {
 	for (char& c : str) {
 		// Converte char -> índice
 		short index = CaesarCipher::charToIndex(c);
