@@ -12,7 +12,6 @@ arquivo users.json.
 # ==============================================================================
 
 import datetime
-import getpass
 import hashlib
 import tinydb
 
@@ -43,7 +42,7 @@ def check_token(username, token):
     # Gera tokens
     tokens = []
     prev_token = user["seed_pw"]
-    prev_token += user["salt"] + time_now
+    prev_token += user["token_salt"] + time_now
     for i in range(5):
         sha = hashlib.sha256()
         sha.update(prev_token.encode("utf-8"))
@@ -61,7 +60,7 @@ def check_token(username, token):
 def main():
     # Lê o usuário e o token
     username = input("Username: ")
-    token = getpass.getpass("Token: ")
+    token = input("Token: ")
 
     # Verifica o token
     auth = check_token(username, token)

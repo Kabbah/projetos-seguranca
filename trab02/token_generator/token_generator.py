@@ -42,25 +42,30 @@ def register_user():
     local_pw = getpass.getpass("Local password: ")
     seed_pw = getpass.getpass("Seed password: ")
 
+    # Gera um sal de 16 caracteres para cada senha
+    local_pw_salt = "".join(random.choice(ALPHABET) for i in range(16))
+    seed_pw_salt = "".join(random.choice(ALPHABET) for i in range(16))
+
     # Gera um salzinho com 4 caracteres
     salt = "".join(random.choice(ALPHABET) for i in range(4))
 
     # Calcula o hash da senha local
     sha = hashlib.sha256()
     sha.update(local_pw.encode("utf-8"))
-    sha.update(salt.encode("utf-8"))
+    sha.update(local_pw_salt.encode("utf-8"))
     hashed_local_pw = sha.hexdigest()
 
     # Calcula o hash da senha seed
     sha = hashlib.sha256()
     sha.update(seed_pw.encode("utf-8"))
-    sha.update(salt.encode("utf-8"))
+    sha.update(seed_pw_salt.encode("utf-8"))
     hashed_seed_pw = sha.hexdigest()
 
     # Cria um dict com as informações do usuário
-    user_dict = {"username": username, "local_pw": hashed_local_pw,
-                 "seed_pw": hashed_seed_pw, "salt": salt,
-                 "last_login": 0}
+    user_dict = {"username": username,
+                 "local_pw": hashed_local_pw, "local_pw_salt": local_pw_salt,
+                 "seed_pw": hashed_seed_pw, "seed_pw_salt": seed_pw_salt,
+                 "token_salt": salt, "last_login": 0}
 
     # Adiciona o usuário à lista e grava no arquivo
     users_data.insert(user_dict)
@@ -83,27 +88,27 @@ def generate_token():
         return
     user = user_search[0]
 
-    # Calcula o hash da senha local
+    # Calcula o hash da senha local com o sal dela
     sha = hashlib.sha256()
     sha.update(local_pw.encode("utf-8"))
-    sha.update(user["salt"].encode("utf-8"))
+    sha.update(user["local_pw_salt"].encode("utf-8"))
     hashed_local_pw = sha.hexdigest()
 
     if user["local_pw"] != hashed_local_pw:
         print("Error: wrong username/password.")
         return
 
-    # Gera tokens
+    # Gera tokens usando a senha semente, o sal de token e o tempo
     tokens = []
     prev_token = user["seed_pw"]
-    prev_token += user["salt"] + datetime.datetime.now().strftime("%Y%m%d%H%M")
+    prev_token += user["token_salt"] + datetime.datetime.now().strftime("%Y%m%d%H%M")
     for i in range(5):
         sha = hashlib.sha256()
         sha.update(prev_token.encode("utf-8"))
         prev_token = sha.hexdigest()[:6]
         tokens.append(prev_token)
 
-    print(tokens)
+    print("Tokens: " + str(tokens))
 
 # ==============================================================================
 
