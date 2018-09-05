@@ -65,7 +65,7 @@ def register_user():
     user_dict = {"username": username,
                  "local_pw": hashed_local_pw, "local_pw_salt": local_pw_salt,
                  "seed_pw": hashed_seed_pw, "seed_pw_salt": seed_pw_salt,
-                 "token_salt": salt, "last_login": 0}
+                 "token_salt": salt, "last_token": "000000"}
 
     # Adiciona o usuário à lista e grava no arquivo
     users_data.insert(user_dict)
