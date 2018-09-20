@@ -9,8 +9,9 @@ import getpass
 import hashlib
 import json
 import pyDes
-import secrets
 import socket
+
+from random import SystemRandom
 
 # ==============================================================================
 
@@ -32,6 +33,7 @@ class UserApp(object):
         pw = getpass.getpass("Password: ")
 
         # Calcula o hash da senha
+        # FIXME: Fazer isso de forma mais compacta
         sha = hashlib.sha256()
         sha.update(pw.encode("utf-8"))
         hashed_pw = sha.hexdigest()
@@ -51,16 +53,18 @@ class UserApp(object):
 
         # Aguarda a resposta do AS e processa
         response = self.socket_recv(client_socket)
+        response = response.decode("utf-8") # Verificar exceções disso aqui
         self.process_response(response, hashed_pw)
 
     # --------------------------------------------------------------------------
 
     def make_request(self, user_id, user_pw_hash, service_id, duration):
         # Monta a parte a ser criptografada da requisição
-        random_n = secrets.token_hex(16)
-        request_data = {"service_id": service_id,
-                        "duration": duration,
-                        "random_n": random_n}
+        random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
+                for _ in range(16))
+        request_data = {"id_s": service_id,
+                        "t_r": duration,
+                        "n_1": random_n}
         request_data_str = json.dumps(request_data)
 
         # Criptografa usando DES
@@ -68,8 +72,8 @@ class UserApp(object):
         des_request_str = des.encrypt(request_data_str)
 
         # Monta o request como JSON
-        request = {"user_id": user_id, "request": des_request_str.hex()}
-        print(request)
+        request = {"id_c": user_id, "request": des_request_str.hex()}
+        print(request) # FIXME
         return json.dumps(request)
 
     # --------------------------------------------------------------------------
@@ -82,6 +86,7 @@ class UserApp(object):
         # número aleatório gerado na mensagem de requisição
         des = pyDes.des(user_pw_hash[:8], pad=None, padmode=pyDes.PAD_PKCS5)
         user_header = des.decrypt(bytes.fromhex(resp["user_header"]))
+        user_header = user_header.decode("utf-8") # Verificar exceções disso aqui
         try:
             user_header = json.loads(user_header)
         except ValueError:
@@ -89,8 +94,8 @@ class UserApp(object):
             return None
 
         # FIXME
-        print(user_header["session_key"])
-        print(user_header["random_n"])
+        print(user_header["k_c_tgs"])
+        print(user_header["n_1"])
         print(resp["ticket"])
 
         # TODO:

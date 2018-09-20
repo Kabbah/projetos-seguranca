@@ -7,9 +7,10 @@
 
 import json
 import pyDes
-import secrets
 import tinydb
 import threading
+
+from random import SystemRandom
 
 # ==============================================================================
 
@@ -29,6 +30,7 @@ class AuthRequest(threading.Thread):
     def run(self):
         # Recebe a mensagem enviada por socket
         message = self.socket_recv()
+        message = message.decode("utf-8") # Verificar exceções disso aqui
 
         # Tenta processar a mensagem
         message_dict = self.process_message(message)
@@ -44,7 +46,7 @@ class AuthRequest(threading.Thread):
     def process_message(self, message):
         # Carrega a mensagem como JSON
         msg = json.loads(message)
-        username = msg["user_id"]
+        username = msg["id_c"]
         request_des = bytes.fromhex(msg["request"])
 
         # Busca o usuário no banco de dados
@@ -52,41 +54,45 @@ class AuthRequest(threading.Thread):
         user_search = self.users_db.search(user_query["username"] == username)
         if len(user_search) == 0:
             return None
+        
+        # FIXME: verificar se o hash da senha é idêntico?
 
         # Descriptografa com DES
         user = user_search[0]
         des = pyDes.des(user["pw"][:8], pad=None, padmode=pyDes.PAD_PKCS5)
         request = des.decrypt(request_des)
+        request = request.decode("utf-8") # Verificar exceções disso aqui
         try:
-            request = json.loads(request)
+            request = json.loads(request) # Verificar exceções disso aqui
         except ValueError:
             return None
 
         # Agora lê os campos internos
-        ret_dict = {"username": username,
+        ret_dict = {"id_c": username,
                     "pw": user["pw"],
-                    "service_id": request["service_id"],
-                    "duration": request["duration"],
-                    "random_n": request["random_n"]}
+                    "id_s": request["id_s"],
+                    "t_r": request["t_r"],
+                    "n_1": request["n_1"]}
         return ret_dict
 
     # --------------------------------------------------------------------------
 
     def send_response(self, message_dict):
         # Gera a chave de sessão a ser usada com o TGS
-        key_client_tgs = secrets.token_hex(8)
+        seusbytes = bytes(SystemRandom().getrandbits(8) for _ in range(8))
+        key_client_tgs = "".join("{:02x}".format(SystemRandom().getrandbits(8))
+                for _ in range(8))
 
         # Gera o ticket para comunicação entre o cliente e o TGS
-        ticket = {"username": message_dict["username"],
-                  "duration": message_dict["duration"],
-                  "session_key": key_client_tgs}
+        ticket = {"id_c": message_dict["id_c"],
+                  "t_r": message_dict["t_r"],
+                  "k_c_tgs": key_client_tgs}
         des = pyDes.des(TGS_KEY, pad=None, padmode=pyDes.PAD_PKCS5)
         ticket_des = des.encrypt(json.dumps(ticket))
 
         # Gera o restante da resposta
-        user_header = {"session_key": key_client_tgs,
-                       "random_n": message_dict["random_n"]}
-        print(message_dict["pw"][:8])
+        user_header = {"k_c_tgs": key_client_tgs,
+                       "n_1": message_dict["n_1"]}
         des = pyDes.des(message_dict["pw"][:8],
                         pad=None, padmode=pyDes.PAD_PKCS5)
         sarue_des = des.encrypt(json.dumps(user_header))
