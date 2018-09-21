@@ -14,8 +14,7 @@ from random import SystemRandom
 
 # ==============================================================================
 
-# FIXME: colocar hash
-TGS_KEY = ".S3cUr3^"
+TGS_KEY = "85378ff6e1f1a6ac931a653f36a2b3eb81beab1e8c78df8648dfc6f4cc99279d"
 
 # ==============================================================================
 
@@ -87,7 +86,7 @@ class AuthRequest(threading.Thread):
         ticket = {"id_c": message_dict["id_c"],
                   "t_r": message_dict["t_r"],
                   "k_c_tgs": key_client_tgs}
-        des = pyDes.des(TGS_KEY, pad=None, padmode=pyDes.PAD_PKCS5)
+        des = pyDes.des(TGS_KEY[:8], pad=None, padmode=pyDes.PAD_PKCS5)
         ticket_des = des.encrypt(json.dumps(ticket))
 
         # Gera o restante da resposta
