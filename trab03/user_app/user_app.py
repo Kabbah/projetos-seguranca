@@ -5,12 +5,12 @@
 # Data: 2018/09/15
 # ==============================================================================
 
-import getpass
 import hashlib
 import json
 import pyDes
 import socket
 
+from getpass import getpass
 from random import SystemRandom
 
 # ==============================================================================
@@ -30,13 +30,8 @@ class UserApp(object):
     def start(self):
         # Pega nome de usuário e senha por input
         username = input("Username: ")
-        pw = getpass.getpass("Password: ")
-
-        # Calcula o hash da senha
-        # FIXME: Fazer isso de forma mais compacta
-        sha = hashlib.sha256()
-        sha.update(pw.encode("utf-8"))
-        hashed_pw = sha.hexdigest()
+        hashed_pw = hashlib.sha256(
+            getpass("Password: ").encode("utf-8")).hexdigest()
 
         # Pega ID do serviço e duração do ticket por input
         service_id = input("Service ID: ")
