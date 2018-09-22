@@ -26,6 +26,8 @@ from message import TGSResponse_pb2
 PORT_AUTH_SERVER = 11037
 PORT_TICKET_SERVER = 11038
 
+VERBOSE = True
+
 # ==============================================================================
 
 class UserApp(object):
@@ -88,7 +90,6 @@ class UserApp(object):
 
         # Aguarda a resposta do TGS e processa
         response = self.socket_recv(client_socket)
-        print(response)
         client_socket.close()
         key_client_service, ticket_service = self.process_response_tgs(response,
                 key_client_tgs, random_n)
@@ -115,9 +116,19 @@ class UserApp(object):
         :param end_time: tempo desejado
         :return: request (mensagem Protobuf) e random_n (número aleatório 1)
         """
-        # Monta a parte a ser criptografada da requisição
+        # Gera o número aleatório da mensagem
         random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
                 for _ in range(16))
+
+        if VERBOSE:
+            print("\nCreating AS request message:\n"
+                  "    id_c: {}\n"
+                  "    id_s: {}\n"
+                  "    t_r: {}\n"
+                  "    n_1: {}\n"
+                  .format(user_id, service_id, end_time, random_n))
+
+        # Monta a parte a ser criptografada da requisição
         request_data = {"id_s": service_id,
                         "t_r": end_time,
                         "n_1": random_n}
@@ -131,12 +142,19 @@ class UserApp(object):
         request = UserASRequest_pb2.UserASRequest()
         request.id_c = user_id
         request.request = des_request_str
+
+        if VERBOSE:
+            print("AS request message:\n{}\n".format(request))
+
         return request, random_n
 
     # --------------------------------------------------------------------------
 
     @staticmethod
     def process_response_as(response, user_pw_hash, random_n):
+        if VERBOSE:
+            print("AS response:\n{}\n".format(response))
+
         # Lê a resposta com Protobuf
         resp = ASResponse_pb2.ASResponse()
         try:
@@ -158,12 +176,15 @@ class UserApp(object):
         recv_random_n = user_header["n_1"]
         ticket = resp.ticket
 
+        if VERBOSE:
+            print("Data received from AS:\n"
+                  "    k_c_tgs: {}\n"
+                  "    n_1: {}\n"
+                  "    T_c_tgs: {}\n"
+                  .format(key_client_tgs, recv_random_n, ticket))
+
         if recv_random_n != random_n:
             return None, None
-
-        # FIXME
-        print(key_client_tgs)
-        print(ticket)
 
         return key_client_tgs, ticket
 
@@ -171,9 +192,19 @@ class UserApp(object):
 
     @staticmethod
     def make_request_tgs(user_id, service_id, end_time, key_client_tgs, ticket_tgs):
-        # Monta a parte a ser criptografada da requisição
+        # Gera o número aleatório da mensagem
         random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
-                for _ in range(16))
+                           for _ in range(16))
+
+        if VERBOSE:
+            print("\nCreating TGS request message:\n"
+                  "    id_c: {}\n"
+                  "    id_s: {}\n"
+                  "    t_r: {}\n"
+                  "    n_2: {}\n"
+                  .format(user_id, service_id, end_time, random_n))
+
+        # Monta a parte a ser criptografada da requisição
         request_data = {"id_c": user_id,
                         "id_s": service_id,
                         "t_r": end_time,
@@ -188,12 +219,19 @@ class UserApp(object):
         request = UserTGSRequest_pb2.UserTGSRequest()
         request.request = des_request_str
         request.ticket = ticket_tgs
+
+        if VERBOSE:
+            print("TGS request message:\n{}\n".format(request))
+
         return request, random_n
 
     # --------------------------------------------------------------------------
 
     @staticmethod
     def process_response_tgs(response, key_client_tgs, random_n):
+        if VERBOSE:
+            print("TGS response:\n{}\n".format(response))
+
         # Lê a resposta com Protobuf
         resp = TGSResponse_pb2.TGSResponse()
         try:
@@ -210,17 +248,22 @@ class UserApp(object):
         except (UnicodeDecodeError, ValueError):
             return None, None
 
-        key_client_service = user_header["k_c_s"]
+        key_client_service = bytes.fromhex(user_header["k_c_s"])
         authorized_time = user_header["t_a"]
         recv_random_n = user_header["n_2"]
         ticket = resp.ticket
 
+        if VERBOSE:
+            print("Data received from TGS:\n"
+                  "    k_c_s: {}\n"
+                  "    t_a: {}\n"
+                  "    n_2: {}\n"
+                  "    T_c_s: {}\n"
+                  .format(key_client_service, authorized_time, recv_random_n,
+                          ticket))
+
         if random_n != recv_random_n:
             return None, None
-
-        # FIXME
-        print(key_client_service)
-        print(ticket)
 
         return key_client_service, ticket
 
