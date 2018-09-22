@@ -1,0 +1,3 @@
+message ServiceResponse {
+	required bytes response = 1;
+}

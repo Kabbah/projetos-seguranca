@@ -1,0 +1,4 @@
+message ASResponse {
+	required bytes user_header = 1;
+	required bytes ticket = 2;
+}
