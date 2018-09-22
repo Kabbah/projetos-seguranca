@@ -5,29 +5,24 @@
 # Data: 2018/09/15
 # ==============================================================================
 
-import json
 import pyDes
-import tinydb
 import threading
 
-from random import SystemRandom
-
 # Protobuf
-from Kerberos_pb2 import UserTGSRequest, UserTGSRequestData
-from Kerberos_pb2 import ASResponseTicket
-from Kerberos_pb2 import TGSResponse, TGSResponseUserHeader, TGSResponseTicket
+from Kerberos_pb2 import UserServiceRequest, UserServiceRequestData
+from Kerberos_pb2 import TGSResponseTicket
+from Kerberos_pb2 import ServiceResponse, ServiceResponseData
 from google.protobuf.message import DecodeError
 
 # ==============================================================================
 
-TGS_KEY = "85378ff6e1f1a6ac931a653f36a2b3eb81beab1e8c78df8648dfc6f4cc99279d"
+KEY = "977565311fe59d9feafd0a9b25f3cc21f541c9eb9ee738c0b8550e821d5bee15"
 
 # ==============================================================================
 
-class TicketRequest(threading.Thread):
-    def __init__(self, sock, services_db):
+class ServiceRequest(threading.Thread):
+    def __init__(self, sock):
         self.sock = sock
-        self.services_db = services_db
         threading.Thread.__init__(self)
 
     # --------------------------------------------------------------------------
@@ -41,7 +36,8 @@ class TicketRequest(threading.Thread):
         if message_dict is None:
             self.sock.send(b"Request denied")
         else:
-            self.send_response(message_dict)
+            resp = self.do_action(message_dict["id_c"], message_dict["s_r"])
+            self.send_response(message_dict, resp)
 
         self.sock.close()
 
@@ -49,17 +45,17 @@ class TicketRequest(threading.Thread):
 
     def process_message(self, message):
         # Carrega a mensagem com Protobuf
-        request = UserTGSRequest()
+        request = UserServiceRequest()
         try:
             request.ParseFromString(message)
         except DecodeError:
             return None
 
         # Descriptografa com DES
-        des = pyDes.des(TGS_KEY[:8], pad=None, padmode=pyDes.PAD_PKCS5)
-        ticket_data = ASResponseTicket()
+        des = pyDes.des(KEY[:8], pad=None, padmode=pyDes.PAD_PKCS5)
+        ticket_data = TGSResponseTicket()
         try:
-            ticket_data_str = des.decrypt(request.t_c_tgs)
+            ticket_data_str = des.decrypt(request.t_c_s)
             if ticket_data_str == b'':
                 return None
             ticket_data.ParseFromString(ticket_data_str)
@@ -68,12 +64,12 @@ class TicketRequest(threading.Thread):
 
         # Agora lê os campos internos
         user_id = ticket_data.id_c
-        end_time = ticket_data.t_r
-        key_client_tgs = ticket_data.k_c_tgs
+        authorized_time = ticket_data.t_a
+        key_client_service = ticket_data.k_c_s
 
         # Agora é possível ler a requisição
-        des = pyDes.des(key_client_tgs, pad=None, padmode=pyDes.PAD_PKCS5)
-        request_data = UserTGSRequestData()
+        des = pyDes.des(key_client_service, pad=None, padmode=pyDes.PAD_PKCS5)
+        request_data = UserServiceRequestData()
         try:
             request_data_str = des.decrypt(request.request)
             if request_data_str == b'':
@@ -84,67 +80,50 @@ class TicketRequest(threading.Thread):
 
         # Agora lê os outros campos internos
         request_user_id = request_data.id_c
-        service_id = request_data.id_s
         request_end_time = request_data.t_r
-        random_n = request_data.n_2
-
-        # Busca o recurso no banco de dados
-        service_query = tinydb.Query()
-        service_search = self.services_db.search(
-                service_query["id"] == service_id)
-        if len(service_search) == 0:
-            return None
-        service = service_search[0]
+        requested_service = request_data.s_r
+        random_n = request_data.n_3
 
         if user_id != request_user_id:
             return None
-        if end_time != request_end_time:
+        if request_end_time > authorized_time:
             return None
 
-        # Aqui pode ser implementada a política de permissões dos usuários
+        # Verifica se o serviço requisitado é oferecido
+        if requested_service not in ["open"]:
+            return None
 
         ret_dict = {"id_c": user_id,
-                    "t_r": end_time,
-                    "n_2": random_n,
-                    "k_c_tgs": key_client_tgs,
-                    "service": service}
+                    "n_3": random_n,
+                    "k_c_s": key_client_service,
+                    "s_r": requested_service}
 
         return ret_dict
 
     # --------------------------------------------------------------------------
 
-    def send_response(self, message_dict):
-        # Gera a chave de sessão a ser usada com o TGS
-        key_client_service = bytes(SystemRandom().getrandbits(8)
-                                   for _ in range(8))
-
-        # TODO: Implementar aqui a política de tempo
-        authorized_time = message_dict["t_r"]
-
-        # Gera o ticket para comunicação entre o cliente e o serviço
-        ticket = TGSResponseTicket()
-        ticket.id_c = message_dict["id_c"]
-        ticket.t_a = authorized_time
-        ticket.k_c_s = key_client_service
-        des = pyDes.des(message_dict["service"]["pw"][:8], pad=None,
-                padmode=pyDes.PAD_PKCS5)
-        des_ticket = des.encrypt(ticket.SerializeToString())
-
-        # Gera o restante da resposta
-        user_header = TGSResponseUserHeader()
-        user_header.k_c_s = key_client_service
-        user_header.t_a = authorized_time
-        user_header.n_2 = message_dict["n_2"]
-        des = pyDes.des(message_dict["k_c_tgs"],
+    def send_response(self, message_dict, response):
+        # Gera a resposta
+        response_data = ServiceResponseData()
+        response_data.response_str = response
+        response_data.n_3 = message_dict["n_3"]
+        des = pyDes.des(message_dict["k_c_s"],
                         pad=None, padmode=pyDes.PAD_PKCS5)
-        des_user_header = des.encrypt(user_header.SerializeToString())
+        des_response = des.encrypt(response_data.SerializeToString())
 
         # Junta a resposta e envia
-        response = TGSResponse()
-        response.user_header = des_user_header
-        response.t_c_s = des_ticket
+        response = ServiceResponse()
+        response.response = des_response
 
         self.sock.send(response.SerializeToString())
+
+    # --------------------------------------------------------------------------
+
+    def do_action(self, user_id, action):
+        if action == "open":
+            print("{}: Opened.".format(user_id))
+            return "Opened"
+        return "No action"
 
     # --------------------------------------------------------------------------
 

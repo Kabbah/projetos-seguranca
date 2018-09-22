@@ -20,7 +20,7 @@ from Kerberos_pb2 import ASResponse, ASResponseUserHeader
 from Kerberos_pb2 import UserTGSRequest, UserTGSRequestData
 from Kerberos_pb2 import TGSResponse, TGSResponseUserHeader
 from Kerberos_pb2 import UserServiceRequest, UserServiceRequestData
-from Kerberos_pb2 import ServiceResponse
+from Kerberos_pb2 import ServiceResponse, ServiceResponseData
 from google.protobuf.message import DecodeError
 
 # ==============================================================================
@@ -28,25 +28,26 @@ from google.protobuf.message import DecodeError
 PORT_AUTH_SERVER = 11037
 PORT_TICKET_SERVER = 11038
 
+PORT_SERVICE_SERVER = {
+    "B202": 11039,
+    "B108": 11040
+}
+
 VERBOSE = True
 
 # ==============================================================================
 
 class UserApp(object):
     def __init__(self):
-        pass
+        self.tickets = {}
 
     # --------------------------------------------------------------------------
 
-    def start(self):
+    def obtain_ticket(self, service_id, duration):
         # Pega nome de usuário e senha por input
         username = input("Username: ")
         hashed_pw = hashlib.sha256(
             getpass("Password: ").encode("utf-8")).hexdigest()
-
-        # Pega ID do serviço e duração do ticket por input
-        service_id = input("Service ID: ")
-        duration = int(input("Duration (minutes): "))
 
         # Calcula o timestamp final a partir da duração
         end_time = time.time() + 60 * duration
@@ -100,6 +101,91 @@ class UserApp(object):
         if key_client_service is None or ticket_service is None:
             print("Failed to communicate with the TGS")
             return
+
+        # Aqui, o cliente pode armazenar a chave de sessão e o token recebidos.
+        self.tickets[service_id] = {"id_c": username,
+                                    "t_r": end_time,
+                                    "k_c_s": key_client_service,
+                                    "t_c_s": ticket_service}
+
+    # --------------------------------------------------------------------------
+
+    def access_service(self, service_id):
+        if service_id not in PORT_SERVICE_SERVER:
+            return None
+        port = PORT_SERVICE_SERVER[service_id]
+
+        # Pega os dados de um ticket já gerado
+        if service_id not in self.tickets:
+            return None
+        request_fields = self.tickets[service_id]
+
+        # Gera o número aleatório da mensagem
+        random_n = bytes(SystemRandom().getrandbits(8) for _ in range(8))
+
+        request_data = UserServiceRequestData()
+        request_data.id_c = request_fields["id_c"]
+        request_data.t_r = request_fields["t_r"]
+        request_data.s_r = "open"  # FIXME
+        request_data.n_3 = random_n
+
+        if VERBOSE:
+            print("\nService request data:\n{}\n".format(request_data))
+
+        # Criptografa usando DES
+        des = pyDes.des(request_fields["k_c_s"], pad=None,
+                        padmode=pyDes.PAD_PKCS5)
+        des_request_data = des.encrypt(request_data.SerializeToString())
+
+        # Monta o request com Protobuf
+        request = UserServiceRequest()
+        request.request = des_request_data
+        request.t_c_s = request_fields["t_c_s"]
+
+        if VERBOSE:
+            print("Service request message:\n{}\n".format(request))
+
+        # Cria o socket e tenta enviar a requisição ao serviço
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((socket.gethostname(), port))
+        if client_socket.send(request.SerializeToString()) == 0:
+            raise RuntimeError("Socket connection broken: TGS")
+
+        # Aguarda a resposta do serviço e processa
+        response = self.socket_recv(client_socket)
+        client_socket.close()
+
+        if VERBOSE:
+            print("Service response:\n{}\n".format(response))
+
+        # Lê a resposta com Protobuf
+        resp = ServiceResponse()
+        try:
+            resp.ParseFromString(response)
+        except DecodeError:
+            return None
+
+        # Tenta descriptografar o header, que contém a resposta ao acesso e o
+        # número aleatório gerado na mensagem de requisição
+        des = pyDes.des(request_fields["k_c_s"], pad=None,
+                        padmode=pyDes.PAD_PKCS5)
+        response_data = ServiceResponseData()
+        try:
+            response_data_str = des.decrypt(resp.response)
+            if response_data_str == b'':
+                return None
+            response_data.ParseFromString(response_data_str)
+        except (DecodeError, ValueError):
+            return None
+
+        if VERBOSE:
+            print("Data received from service:\n{}\n".format(response_data))
+
+        if response_data.n_3 != random_n:
+            return None
+
+        # Retorna a chave de sessão e o ticket para se comunicar com o TGS
+        return response_data.response_str
 
     # --------------------------------------------------------------------------
 
