@@ -1,4 +1,0 @@
-message UserASRequest {
-	required string id_c = 1;
-	required bytes request = 2;
-}

@@ -13,9 +13,10 @@ import threading
 from random import SystemRandom
 
 # Protobuf
+from Kerberos_pb2 import UserTGSRequest, UserTGSRequestData
+from Kerberos_pb2 import ASResponseTicket
+from Kerberos_pb2 import TGSResponse, TGSResponseUserHeader, TGSResponseTicket
 from google.protobuf.message import DecodeError
-from message import TGSResponse_pb2
-from message import UserTGSRequest_pb2
 
 # ==============================================================================
 
@@ -48,42 +49,44 @@ class TicketRequest(threading.Thread):
 
     def process_message(self, message):
         # Carrega a mensagem com Protobuf
-        msg = UserTGSRequest_pb2.UserTGSRequest()
+        request = UserTGSRequest()
         try:
-            msg.ParseFromString(message)
+            request.ParseFromString(message)
         except DecodeError:
             return None
-        request_des = msg.request
-        ticket = msg.ticket
 
         # Descriptografa com DES
         des = pyDes.des(TGS_KEY[:8], pad=None, padmode=pyDes.PAD_PKCS5)
-        ticket_data = des.decrypt(ticket)
+        ticket_data = ASResponseTicket()
         try:
-            ticket_data = ticket_data.decode("utf-8")
-            ticket_data = json.loads(ticket_data)
-        except (UnicodeDecodeError, ValueError):
+            ticket_data_str = des.decrypt(request.t_c_tgs)
+            if ticket_data_str == b'':
+                return None
+            ticket_data.ParseFromString(ticket_data_str)
+        except (DecodeError, ValueError):
             return None
 
         # Agora lê os campos internos
-        user_id = ticket_data["id_c"]
-        end_time = ticket_data["t_r"]
-        key_client_tgs = bytes.fromhex(ticket_data["k_c_tgs"])
+        user_id = ticket_data.id_c
+        end_time = ticket_data.t_r
+        key_client_tgs = ticket_data.k_c_tgs
 
         # Agora é possível ler a requisição
         des = pyDes.des(key_client_tgs, pad=None, padmode=pyDes.PAD_PKCS5)
-        request = des.decrypt(request_des)
+        request_data = UserTGSRequestData()
         try:
-            request = request.decode("utf-8")
-            request = json.loads(request)
+            request_data_str = des.decrypt(request.request)
+            if request_data_str == b'':
+                return None
+            request_data.ParseFromString(request_data_str)
         except (UnicodeDecodeError, ValueError):
             return None
 
         # Agora lê os outros campos internos
-        request_user_id = request["id_c"]
-        service_id = request["id_s"]
-        request_end_time = request["t_r"]
-        random_n = request["n_2"]
+        request_user_id = request_data.id_c
+        service_id = request_data.id_s
+        request_end_time = request_data.t_r
+        random_n = request_data.n_2
 
         # Busca o recurso no banco de dados
         service_query = tinydb.Query()
@@ -110,29 +113,34 @@ class TicketRequest(threading.Thread):
 
     def send_response(self, message_dict):
         # Gera a chave de sessão a ser usada com o TGS
-        key_client_service = "".join("{:02x}".format(
-                SystemRandom().getrandbits(8)) for _ in range(8))
+        key_client_service = bytes(SystemRandom().getrandbits(8)
+                                   for _ in range(8))
+
+        # TODO: Implementar aqui a política de tempo
+        authorized_time = message_dict["t_r"]
 
         # Gera o ticket para comunicação entre o cliente e o serviço
-        ticket = {"id_c": message_dict["id_c"],
-                  "t_a": message_dict["t_r"],
-                  "k_c_s": key_client_service}
+        ticket = TGSResponseTicket()
+        ticket.id_c = message_dict["id_c"]
+        ticket.t_a = authorized_time
+        ticket.k_c_s = key_client_service
         des = pyDes.des(message_dict["service"]["pw"][:8], pad=None,
                 padmode=pyDes.PAD_PKCS5)
-        ticket_des = des.encrypt(json.dumps(ticket))
+        des_ticket = des.encrypt(ticket.SerializeToString())
 
         # Gera o restante da resposta
-        user_header = {"k_c_s": key_client_service,
-                       "t_a": message_dict["t_r"],
-                       "n_2": message_dict["n_2"]}
+        user_header = TGSResponseUserHeader()
+        user_header.k_c_s = key_client_service
+        user_header.t_a = authorized_time
+        user_header.n_2 = message_dict["n_2"]
         des = pyDes.des(message_dict["k_c_tgs"],
                         pad=None, padmode=pyDes.PAD_PKCS5)
-        user_header_des = des.encrypt(json.dumps(user_header))
+        des_user_header = des.encrypt(user_header.SerializeToString())
 
         # Junta a resposta e envia
-        response = TGSResponse_pb2.TGSResponse()
-        response.user_header = user_header_des
-        response.ticket = ticket_des
+        response = TGSResponse()
+        response.user_header = des_user_header
+        response.t_c_s = des_ticket
 
         self.sock.send(response.SerializeToString())
 

@@ -15,11 +15,13 @@ from getpass import getpass
 from random import SystemRandom
 
 # Protobuf
+from Kerberos_pb2 import UserASRequest, UserASRequestData
+from Kerberos_pb2 import ASResponse, ASResponseUserHeader
+from Kerberos_pb2 import UserTGSRequest, UserTGSRequestData
+from Kerberos_pb2 import TGSResponse, TGSResponseUserHeader
+from Kerberos_pb2 import UserServiceRequest, UserServiceRequestData
+from Kerberos_pb2 import ServiceResponse
 from google.protobuf.message import DecodeError
-from message import ASResponse_pb2
-from message import UserASRequest_pb2
-from message import UserTGSRequest_pb2
-from message import TGSResponse_pb2
 
 # ==============================================================================
 
@@ -117,31 +119,25 @@ class UserApp(object):
         :return: request (mensagem Protobuf) e random_n (número aleatório 1)
         """
         # Gera o número aleatório da mensagem
-        random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
-                for _ in range(16))
-
-        if VERBOSE:
-            print("\nCreating AS request message:\n"
-                  "    id_c: {}\n"
-                  "    id_s: {}\n"
-                  "    t_r: {}\n"
-                  "    n_1: {}\n"
-                  .format(user_id, service_id, end_time, random_n))
+        random_n = bytes(SystemRandom().getrandbits(8) for _ in range(8))
 
         # Monta a parte a ser criptografada da requisição
-        request_data = {"id_s": service_id,
-                        "t_r": end_time,
-                        "n_1": random_n}
-        request_data_str = json.dumps(request_data)
+        request_data = UserASRequestData()
+        request_data.id_s = service_id
+        request_data.t_r = end_time
+        request_data.n_1 = random_n
+
+        if VERBOSE:
+            print("\nAS request data:\n{}\n".format(request_data))
 
         # Criptografa usando DES
         des = pyDes.des(user_pw_hash[:8], pad=None, padmode=pyDes.PAD_PKCS5)
-        des_request_str = des.encrypt(request_data_str)
+        des_request_data = des.encrypt(request_data.SerializeToString())
 
         # Monta o request com Protobuf
-        request = UserASRequest_pb2.UserASRequest()
+        request = UserASRequest()
         request.id_c = user_id
-        request.request = des_request_str
+        request.request = des_request_data
 
         if VERBOSE:
             print("AS request message:\n{}\n".format(request))
@@ -156,7 +152,7 @@ class UserApp(object):
             print("AS response:\n{}\n".format(response))
 
         # Lê a resposta com Protobuf
-        resp = ASResponse_pb2.ASResponse()
+        resp = ASResponse()
         try:
             resp.ParseFromString(response)
         except DecodeError:
@@ -165,60 +161,49 @@ class UserApp(object):
         # Tenta descriptografar o header, que contém a chave de sessão e o
         # número aleatório gerado na mensagem de requisição
         des = pyDes.des(user_pw_hash[:8], pad=None, padmode=pyDes.PAD_PKCS5)
+        user_header = ASResponseUserHeader()
         try:
-            user_header = des.decrypt(resp.user_header).decode("utf-8")
-            user_header = json.loads(user_header)
-        except (UnicodeDecodeError, ValueError):
+            user_header_str = des.decrypt(resp.user_header)
+            if user_header_str == b'':
+                return None, None
+            user_header.ParseFromString(user_header_str)
+        except (DecodeError, ValueError):
             return None, None
-
-        # Dados recebidos
-        key_client_tgs = bytes.fromhex(user_header["k_c_tgs"])
-        recv_random_n = user_header["n_1"]
-        ticket = resp.ticket
 
         if VERBOSE:
-            print("Data received from AS:\n"
-                  "    k_c_tgs: {}\n"
-                  "    n_1: {}\n"
-                  "    T_c_tgs: {}\n"
-                  .format(key_client_tgs, recv_random_n, ticket))
+            print("Data received from AS:\n{}\n".format(user_header))
 
-        if recv_random_n != random_n:
+        if user_header.n_1 != random_n:
             return None, None
 
-        return key_client_tgs, ticket
+        # Retorna a chave de sessão e o ticket para se comunicar com o TGS
+        return user_header.k_c_tgs, resp.t_c_tgs
 
     # --------------------------------------------------------------------------
 
     @staticmethod
     def make_request_tgs(user_id, service_id, end_time, key_client_tgs, ticket_tgs):
         # Gera o número aleatório da mensagem
-        random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
-                           for _ in range(16))
-
-        if VERBOSE:
-            print("\nCreating TGS request message:\n"
-                  "    id_c: {}\n"
-                  "    id_s: {}\n"
-                  "    t_r: {}\n"
-                  "    n_2: {}\n"
-                  .format(user_id, service_id, end_time, random_n))
+        random_n = bytes(SystemRandom().getrandbits(8) for _ in range(8))
 
         # Monta a parte a ser criptografada da requisição
-        request_data = {"id_c": user_id,
-                        "id_s": service_id,
-                        "t_r": end_time,
-                        "n_2": random_n}
-        request_data_str = json.dumps(request_data)
+        request_data = UserTGSRequestData()
+        request_data.id_c = user_id
+        request_data.id_s = service_id
+        request_data.t_r = end_time
+        request_data.n_2 = random_n
+
+        if VERBOSE:
+            print("\nTGS request data:\n{}\n".format(request_data))
 
         # Criptografa usando DES
         des = pyDes.des(key_client_tgs, pad=None, padmode=pyDes.PAD_PKCS5)
-        des_request_str = des.encrypt(request_data_str)
+        des_request_data = des.encrypt(request_data.SerializeToString())
 
         # Monta o request com Protobuf
-        request = UserTGSRequest_pb2.UserTGSRequest()
-        request.request = des_request_str
-        request.ticket = ticket_tgs
+        request = UserTGSRequest()
+        request.request = des_request_data
+        request.t_c_tgs = ticket_tgs
 
         if VERBOSE:
             print("TGS request message:\n{}\n".format(request))
@@ -233,7 +218,7 @@ class UserApp(object):
             print("TGS response:\n{}\n".format(response))
 
         # Lê a resposta com Protobuf
-        resp = TGSResponse_pb2.TGSResponse()
+        resp = TGSResponse()
         try:
             resp.ParseFromString(response)
         except DecodeError:
@@ -242,30 +227,23 @@ class UserApp(object):
         # Tenta descriptografar o header, que contém a chave de sessão e o
         # número aleatório gerado na mensagem de requisição
         des = pyDes.des(key_client_tgs, pad=None, padmode=pyDes.PAD_PKCS5)
+        user_header = TGSResponseUserHeader()
         try:
-            user_header = des.decrypt(resp.user_header).decode("utf-8")
-            user_header = json.loads(user_header)
-        except (UnicodeDecodeError, ValueError):
+            user_header_str = des.decrypt(resp.user_header)
+            if user_header_str == b'':
+                return None, None
+            user_header.ParseFromString(user_header_str)
+        except (DecodeError, ValueError):
             return None, None
-
-        key_client_service = bytes.fromhex(user_header["k_c_s"])
-        authorized_time = user_header["t_a"]
-        recv_random_n = user_header["n_2"]
-        ticket = resp.ticket
 
         if VERBOSE:
-            print("Data received from TGS:\n"
-                  "    k_c_s: {}\n"
-                  "    t_a: {}\n"
-                  "    n_2: {}\n"
-                  "    T_c_s: {}\n"
-                  .format(key_client_service, authorized_time, recv_random_n,
-                          ticket))
+            print("Data received from TGS:\n{}\n".format(user_header))
 
-        if random_n != recv_random_n:
+        if user_header.n_2 != random_n:
             return None, None
 
-        return key_client_service, ticket
+        # Retorna a chave de sessão e o ticket para se comunicar como o serviço
+        return user_header.k_c_s, resp.t_c_s
 
     # --------------------------------------------------------------------------
 

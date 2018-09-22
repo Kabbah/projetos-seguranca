@@ -13,9 +13,9 @@ import threading
 from random import SystemRandom
 
 # Protobuf
+from Kerberos_pb2 import UserASRequest, UserASRequestData
+from Kerberos_pb2 import ASResponse, ASResponseUserHeader, ASResponseTicket
 from google.protobuf.message import DecodeError
-from message import ASResponse_pb2
-from message import UserASRequest_pb2
 
 # ==============================================================================
 
@@ -48,13 +48,12 @@ class AuthRequest(threading.Thread):
 
     def process_message(self, message):
         # Carrega a mensagem com Protobuf
-        msg = UserASRequest_pb2.UserASRequest()
+        request = UserASRequest()
         try:
-            msg.ParseFromString(message)
+            request.ParseFromString(message)
         except DecodeError:
             return None
-        username = msg.id_c
-        request_des = msg.request
+        username = request.id_c
 
         # Busca o usuário no banco de dados
         user_query = tinydb.Query()
@@ -65,46 +64,49 @@ class AuthRequest(threading.Thread):
         # Descriptografa com DES
         user = user_search[0]
         des = pyDes.des(user["pw"][:8], pad=None, padmode=pyDes.PAD_PKCS5)
-        request = des.decrypt(request_des)
+        request_data = UserASRequestData()
         try:
-            request = request.decode("utf-8")
-            request = json.loads(request)
-        except (UnicodeDecodeError, ValueError):
+            request_data_str = des.decrypt(request.request)
+            if request_data_str == b'':
+                return None
+            request_data.ParseFromString(request_data_str)
+        except (DecodeError, ValueError):
             return None
 
         # Agora lê os campos internos
         ret_dict = {"id_c": username,
                     "pw": user["pw"],
-                    "id_s": request["id_s"],
-                    "t_r": request["t_r"],
-                    "n_1": request["n_1"]}
+                    "id_s": request_data.id_s,
+                    "t_r": request_data.t_r,
+                    "n_1": request_data.n_1}
         return ret_dict
 
     # --------------------------------------------------------------------------
 
     def send_response(self, message_dict):
         # Gera a chave de sessão a ser usada com o TGS
-        key_client_tgs = "".join("{:02x}".format(SystemRandom().getrandbits(8))
-                for _ in range(8))
+        key_client_tgs = bytes(SystemRandom().getrandbits(8) for _ in range(8))
 
         # Gera o ticket para comunicação entre o cliente e o TGS
-        ticket = {"id_c": message_dict["id_c"],
-                  "t_r": message_dict["t_r"],
-                  "k_c_tgs": key_client_tgs}
+        ticket = ASResponseTicket()
+        ticket.id_c = message_dict["id_c"]
+        ticket.t_r = message_dict["t_r"]
+        ticket.k_c_tgs = key_client_tgs
         des = pyDes.des(TGS_KEY[:8], pad=None, padmode=pyDes.PAD_PKCS5)
-        ticket_des = des.encrypt(json.dumps(ticket))
+        des_ticket = des.encrypt(ticket.SerializeToString())
 
         # Gera o restante da resposta
-        user_header = {"k_c_tgs": key_client_tgs,
-                       "n_1": message_dict["n_1"]}
+        user_header = ASResponseUserHeader()
+        user_header.k_c_tgs = key_client_tgs
+        user_header.n_1 = message_dict["n_1"]
         des = pyDes.des(message_dict["pw"][:8],
                         pad=None, padmode=pyDes.PAD_PKCS5)
-        sarue_des = des.encrypt(json.dumps(user_header))
+        des_user_header = des.encrypt(user_header.SerializeToString())
 
         # Junta a resposta e envia
-        response = ASResponse_pb2.ASResponse()
-        response.user_header = sarue_des
-        response.ticket = ticket_des
+        response = ASResponse()
+        response.user_header = des_user_header
+        response.t_c_tgs = des_ticket
 
         self.sock.send(response.SerializeToString())
 

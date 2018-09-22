@@ -1,0 +1,96 @@
+syntax = "proto2";
+
+
+/* Mensagens do usuário para o AS */
+
+message UserASRequest {
+	required string id_c = 1;
+	required bytes request = 2; // UserASRequestData criptografado com a chave do usuário
+}
+
+message UserASRequestData {
+	required string id_s = 1;
+	required double t_r = 2;
+	required bytes n_1 = 3;
+}
+
+
+/* Mensagens do AS para o usuário */
+
+message ASResponse {
+	required bytes user_header = 1; // ASResponseUserHeader criptografado com a chave do usuário
+	required bytes t_c_tgs = 2; // ASResponseTicket criptografado com a chave do TGS
+}
+
+message ASResponseUserHeader {
+	required bytes k_c_tgs = 1;
+	required bytes n_1 = 2;
+}
+
+message ASResponseTicket {
+	required string id_c = 1;
+	required double t_r = 2;
+	required bytes k_c_tgs = 3;
+}
+
+
+/* Mensagens do usuário para o TGS */
+
+message UserTGSRequest {
+	required bytes request = 1; // UserTGSRequestData criptografado com a chave de sessão entre o usuário e o TGS
+	required bytes t_c_tgs = 2; // ASResponseTicket criptografado com a chave do TGS
+}
+
+message UserTGSRequestData {
+	required string id_c = 1;
+	required string id_s = 2;
+	required double t_r = 3;
+	required bytes n_2 = 4;
+}
+
+
+/* Mensagens do TGS para o usuário */
+
+message TGSResponse {
+	required bytes user_header = 1; // TGSResponseUserHeader criptografado com a chave de sessão entre o usuário e o TGS
+	required bytes t_c_s = 2; // TGSResponseTicket criptografado com a chave do serviço
+}
+
+message TGSResponseUserHeader {
+	required bytes k_c_s = 1;
+	required double t_a = 2;
+	required bytes n_2 = 3;
+}
+
+message TGSResponseTicket {
+	required string id_c = 1;
+	required double t_a = 2;
+	required bytes k_c_s = 3;
+}
+
+
+/* Mensagens do usuário para o serviço */
+
+message UserServiceRequest {
+	required bytes request = 1; // UserServiceRequestData criptografado com a chave de sessão entre o usuário e o serviço
+	required bytes t_c_s = 2; // TGSResponseTicket criptografado com a chave do serviço
+}
+
+message UserServiceRequestData {
+	required string id_c = 1;
+	required double t_r = 2;
+	required string s_r = 3;
+	required bytes n_3 = 4;
+}
+
+
+/* Mensagens do serviço para o usuário */
+
+message ServiceResponse {
+	required bytes response = 1; // ServiceResponseData criptografado com a chave de sessão entre o usuário e o serviço
+}
+
+message ServiceResponseData {
+	required string response_str = 1;
+	required bytes n_3 = 2;
+}

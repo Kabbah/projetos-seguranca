@@ -1,4 +1,0 @@
-message UserServiceRequest {
-	required bytes request = 1;
-	required bytes ticket = 2;
-}

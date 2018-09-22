@@ -1,4 +1,0 @@
-message UserTGSRequest {
-	required bytes request = 1;
-	required bytes ticket = 2;
-}
