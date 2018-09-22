@@ -43,21 +43,41 @@ class UserApp(object):
         duration = input("Duration (minutes): ")
 
         # Monta a requisição para o AS
-        request = self.make_request(username, hashed_pw, service_id, duration)
+        request, random_n = self.make_request(username, hashed_pw, service_id,
+                                              duration)
 
         # Cria o socket e tenta enviar a requisição ao AS
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((socket.gethostname(), PORT_AUTH_SERVER))
-        if client_socket.send(request) == 0:
+        if client_socket.send(request.SerializeToString()) == 0:
             raise RuntimeError("Socket connection broken")
 
         # Aguarda a resposta do AS e processa
         response = self.socket_recv(client_socket)
-        self.process_response(response, hashed_pw)
+        key_client_tgs, ticket_tgs = self.process_response(response, hashed_pw,
+                                                           random_n)
+
+        # Verifica se a comunicação com o AS foi bem sucedida
+        if key_client_tgs is None or ticket_tgs is None:
+            print("Erro na comunicação com o AS.")
+            return
 
     # --------------------------------------------------------------------------
 
     def make_request(self, user_id, user_pw_hash, service_id, duration):
+        """Monta uma requisição a partir dos dados fornecidos.
+        A requisição é uma mensagem Protobuf que contém os seguintes atributos:
+            id_c: string que representa o nome do usuário
+            request: bytes que representam um dicionário encriptado com DES.
+                     Este dicionário contém id_s (ID do serviço), t_r (duração)
+                     e n_1 (número aleatório 1).
+
+        :param user_id: username do usuário
+        :param user_pw_hash: hash SHA-256 da senha do usuário
+        :param service_id: identificador do serviço desejado
+        :param duration: tempo desejado
+        :return: request (mensagem Protobuf) e random_n (número aleatório 1)
+        """
         # Monta a parte a ser criptografada da requisição
         random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
                 for _ in range(16))
@@ -74,18 +94,17 @@ class UserApp(object):
         request = UserASRequest_pb2.UserASRequest()
         request.id_c = user_id
         request.request = des_request_str
-        return request.SerializeToString()
+        return request, random_n
 
     # --------------------------------------------------------------------------
 
-    def process_response(self, response, user_pw_hash):
+    def process_response(self, response, user_pw_hash, random_n):
         # Lê a resposta com Protobuf
         resp = ASResponse_pb2.ASResponse()
         try:
             resp.ParseFromString(response)
         except DecodeError:
-            # FIXME
-            raise
+            return None, None
 
         # Tenta descriptografar o header, que contém a chave de sessão e o
         # número aleatório gerado na mensagem de requisição
@@ -95,17 +114,21 @@ class UserApp(object):
         try:
             user_header = json.loads(user_header)
         except ValueError:
-            # FIXME
-            raise
+            return None, None
+
+        # Dados recebidos
+        key_client_tgs = bytes.fromhex(user_header["k_c_tgs"])
+        recv_random_n = user_header["n_1"]
+        ticket = resp.ticket
+
+        if recv_random_n != random_n:
+            return None, None
 
         # FIXME
-        print(user_header["k_c_tgs"])
-        print(user_header["n_1"])
-        print(resp.ticket)
+        print(key_client_tgs)
+        print(ticket)
 
-        # TODO:
-        # Verificar se o número é o mesmo da requisição.
-        # Converter os campos hexadecimais (ASCII) para vetores de bytes
+        return key_client_tgs, ticket
 
     # --------------------------------------------------------------------------
 
