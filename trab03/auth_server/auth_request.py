@@ -12,6 +12,11 @@ import threading
 
 from random import SystemRandom
 
+# Protobuf
+from google.protobuf.message import DecodeError
+from message import ASResponse_pb2
+from message import UserASRequest_pb2
+
 # ==============================================================================
 
 TGS_KEY = "85378ff6e1f1a6ac931a653f36a2b3eb81beab1e8c78df8648dfc6f4cc99279d"
@@ -29,7 +34,6 @@ class AuthRequest(threading.Thread):
     def run(self):
         # Recebe a mensagem enviada por socket
         message = self.socket_recv()
-        message = message.decode("utf-8") # Verificar exceções disso aqui
 
         # Tenta processar a mensagem
         message_dict = self.process_message(message)
@@ -43,10 +47,14 @@ class AuthRequest(threading.Thread):
     # --------------------------------------------------------------------------
 
     def process_message(self, message):
-        # Carrega a mensagem como JSON
-        msg = json.loads(message)
-        username = msg["id_c"]
-        request_des = bytes.fromhex(msg["request"])
+        # Carrega a mensagem com Protobuf
+        msg = UserASRequest_pb2.UserASRequest()
+        try:
+            msg.ParseFromString(message)
+        except DecodeError:
+            return None
+        username = msg.id_c
+        request_des = msg.request
 
         # Busca o usuário no banco de dados
         user_query = tinydb.Query()
@@ -78,7 +86,6 @@ class AuthRequest(threading.Thread):
 
     def send_response(self, message_dict):
         # Gera a chave de sessão a ser usada com o TGS
-        seusbytes = bytes(SystemRandom().getrandbits(8) for _ in range(8))
         key_client_tgs = "".join("{:02x}".format(SystemRandom().getrandbits(8))
                 for _ in range(8))
 
@@ -97,8 +104,11 @@ class AuthRequest(threading.Thread):
         sarue_des = des.encrypt(json.dumps(user_header))
 
         # Junta a resposta e envia
-        ret_dict = {"user_header": sarue_des.hex(), "ticket": ticket_des.hex()}
-        self.sock.send(json.dumps(ret_dict).encode())
+        response = ASResponse_pb2.ASResponse()
+        response.user_header = sarue_des
+        response.ticket = ticket_des
+
+        self.sock.send(response.SerializeToString())
 
     # --------------------------------------------------------------------------
 

@@ -13,6 +13,11 @@ import socket
 from getpass import getpass
 from random import SystemRandom
 
+# Protobuf
+from google.protobuf.message import DecodeError
+from message import ASResponse_pb2
+from message import UserASRequest_pb2
+
 # ==============================================================================
 
 PORT_USER_APP = 11036
@@ -35,7 +40,7 @@ class UserApp(object):
 
         # Pega ID do serviço e duração do ticket por input
         service_id = input("Service ID: ")
-        duration = input("Duration: ")
+        duration = input("Duration (minutes): ")
 
         # Monta a requisição para o AS
         request = self.make_request(username, hashed_pw, service_id, duration)
@@ -43,12 +48,11 @@ class UserApp(object):
         # Cria o socket e tenta enviar a requisição ao AS
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((socket.gethostname(), PORT_AUTH_SERVER))
-        if client_socket.send(request.encode()) == 0:
+        if client_socket.send(request) == 0:
             raise RuntimeError("Socket connection broken")
 
         # Aguarda a resposta do AS e processa
         response = self.socket_recv(client_socket)
-        response = response.decode("utf-8") # Verificar exceções disso aqui
         self.process_response(response, hashed_pw)
 
     # --------------------------------------------------------------------------
@@ -66,32 +70,38 @@ class UserApp(object):
         des = pyDes.des(user_pw_hash[:8], pad=None, padmode=pyDes.PAD_PKCS5)
         des_request_str = des.encrypt(request_data_str)
 
-        # Monta o request como JSON
-        request = {"id_c": user_id, "request": des_request_str.hex()}
-        print(request) # FIXME
-        return json.dumps(request)
+        # Monta o request com Protobuf
+        request = UserASRequest_pb2.UserASRequest()
+        request.id_c = user_id
+        request.request = des_request_str
+        return request.SerializeToString()
 
     # --------------------------------------------------------------------------
 
     def process_response(self, response, user_pw_hash):
-        # Lê a resposta como JSON
-        resp = json.loads(response)
+        # Lê a resposta com Protobuf
+        resp = ASResponse_pb2.ASResponse()
+        try:
+            resp.ParseFromString(response)
+        except DecodeError:
+            # FIXME
+            raise
 
         # Tenta descriptografar o header, que contém a chave de sessão e o
         # número aleatório gerado na mensagem de requisição
         des = pyDes.des(user_pw_hash[:8], pad=None, padmode=pyDes.PAD_PKCS5)
-        user_header = des.decrypt(bytes.fromhex(resp["user_header"]))
-        user_header = user_header.decode("utf-8") # Verificar exceções disso aqui
+        # Verificar exceções da linha abaixo
+        user_header = des.decrypt(resp.user_header).decode("utf-8")
         try:
             user_header = json.loads(user_header)
         except ValueError:
             # FIXME
-            return None
+            raise
 
         # FIXME
         print(user_header["k_c_tgs"])
         print(user_header["n_1"])
-        print(resp["ticket"])
+        print(resp.ticket)
 
         # TODO:
         # Verificar se o número é o mesmo da requisição.
