@@ -1,16 +1,16 @@
 # ==============================================================================
-# MAIN PARA O AS
+# MAIN PARA O TGS
 #
 # Autor: Victor Barpp Gomes
 # Data: 2018/09/15
 # ==============================================================================
 
-from auth_server import AuthServer
+from ticket_server import TicketServer
 
 # ==============================================================================
 
 def main():
-    server = AuthServer()
+    server = TicketServer()
     server.start()
 
 if __name__ == "__main__":
