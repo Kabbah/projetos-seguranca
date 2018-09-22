@@ -9,6 +9,7 @@ import hashlib
 import json
 import pyDes
 import socket
+import time
 
 from getpass import getpass
 from random import SystemRandom
@@ -40,7 +41,7 @@ class UserApp(object):
 
         # Pega ID do serviço e duração do ticket por input
         service_id = input("Service ID: ")
-        duration = input("Duration (minutes): ")
+        duration = int(input("Duration (minutes): "))
 
         # Monta a requisição para o AS
         request, random_n = self.make_request(username, hashed_pw, service_id,
@@ -78,6 +79,9 @@ class UserApp(object):
         :param duration: tempo desejado
         :return: request (mensagem Protobuf) e random_n (número aleatório 1)
         """
+        # Calcula o timestamp final a partir da duração
+        duration = time.time() + 60*duration
+
         # Monta a parte a ser criptografada da requisição
         random_n = "".join("{:02x}".format(SystemRandom().getrandbits(8))
                 for _ in range(16))
