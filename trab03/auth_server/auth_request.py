@@ -61,17 +61,15 @@ class AuthRequest(threading.Thread):
         user_search = self.users_db.search(user_query["username"] == username)
         if len(user_search) == 0:
             return None
-        
-        # FIXME: verificar se o hash da senha é idêntico?
 
         # Descriptografa com DES
         user = user_search[0]
         des = pyDes.des(user["pw"][:8], pad=None, padmode=pyDes.PAD_PKCS5)
         request = des.decrypt(request_des)
-        request = request.decode("utf-8") # Verificar exceções disso aqui
         try:
-            request = json.loads(request) # Verificar exceções disso aqui
-        except ValueError:
+            request = request.decode("utf-8")
+            request = json.loads(request)
+        except (UnicodeDecodeError, ValueError):
             return None
 
         # Agora lê os campos internos
