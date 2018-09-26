@@ -6,13 +6,12 @@
 # ==============================================================================
 
 import hashlib
-import json
 import pyDes
 import socket
-import time
 
 from getpass import getpass
 from random import SystemRandom
+from time import time
 
 # Protobuf
 from Kerberos_pb2 import UserASRequest, UserASRequestData
@@ -50,7 +49,7 @@ class UserApp(object):
             getpass("Password: ").encode("utf-8")).hexdigest()
 
         # Calcula o timestamp final a partir da duração
-        end_time = time.time() + 60 * duration
+        end_time = time() + 60 * duration
 
         # ==================== #
         # Comunicação com o AS #

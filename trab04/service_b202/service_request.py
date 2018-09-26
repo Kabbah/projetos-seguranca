@@ -8,6 +8,8 @@
 import pyDes
 import threading
 
+from time import time
+
 # Protobuf
 from Kerberos_pb2 import UserServiceRequest, UserServiceRequestData
 from Kerberos_pb2 import TGSResponseTicket
@@ -87,6 +89,9 @@ class ServiceRequest(threading.Thread):
         if user_id != request_user_id:
             return None
         if request_end_time > authorized_time:
+            return None
+
+        if time() > authorized_time:
             return None
 
         # Verifica se o serviço requisitado é oferecido

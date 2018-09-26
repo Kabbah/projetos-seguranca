@@ -11,6 +11,7 @@ import tinydb
 import threading
 
 from random import SystemRandom
+from time import time
 
 # Protobuf
 from Kerberos_pb2 import UserTGSRequest, UserTGSRequestData
@@ -99,6 +100,9 @@ class TicketRequest(threading.Thread):
         if user_id != request_user_id:
             return None
         if end_time != request_end_time:
+            return None
+
+        if time() > end_time:
             return None
 
         # Aqui pode ser implementada a política de permissões dos usuários
