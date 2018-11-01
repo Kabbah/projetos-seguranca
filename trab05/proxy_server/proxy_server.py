@@ -11,7 +11,7 @@ from proxy_thread import ProxyThread
 
 # ==============================================================================
 
-PROXY_HOSTNAME = "192.168.100.2"
+PROXY_HOSTNAME = "127.0.0.1"
 PROXY_PORT = 8000
 
 # ==============================================================================
@@ -29,6 +29,7 @@ class ProxyServer(object):
         :type port: int
         """
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((hostname, port))
         self.server_socket.listen(5)
 

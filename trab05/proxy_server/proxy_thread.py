@@ -7,6 +7,7 @@
 
 import multiprocessing
 import requests
+import socket
 import traceback
 
 from email.utils import formatdate
@@ -14,6 +15,8 @@ from email.utils import formatdate
 # ==============================================================================
 
 UNAUTHORIZED_FILE = "unauthorized.html"
+
+HTTP_PORT = 80
 
 # ==============================================================================
 
@@ -40,7 +43,7 @@ class ProxyThread(multiprocessing.Process):
 
                 if method in ["HEAD", "GET", "POST", "PUT", "PATCH", "DELETE"]:
                     if "monitorando" not in file:
-                        self.__forward_request(method, host, file)
+                        self.__forward_request(host, data)
                         #self.__send_unauthorized_page()
                     else:
                         self.__send_unauthorized_page()
@@ -53,17 +56,17 @@ class ProxyThread(multiprocessing.Process):
 
     @staticmethod
     def parse_http_request(request):
-        request_str = request.decode()
+        request_str = request#.decode()
 
-        request_line, headers = request_str.split("\r\n", 1)
-        request_headers = headers.split("\r\n")
+        request_line, headers = request_str.split(b"\r\n", 1)
+        request_headers = headers.split(b"\r\n")
 
-        parsed_request = {"Request-Line": request_line}
+        parsed_request = {"Request-Line": request_line.decode("utf-8")}
 
         for item in request_headers:
             try:
-                key, value = item.split(": ", 1)
-                parsed_request[key] = value
+                key, value = item.split(b": ", 1)
+                parsed_request[key.decode("utf-8")] = value.decode("utf-8")
             except ValueError:
                 pass
 
@@ -85,27 +88,22 @@ class ProxyThread(multiprocessing.Process):
 
     # --------------------------------------------------------------------------
 
-    def __forward_request(self, method, host, file):
-        response = requests.request(method, file)
+    def __forward_request(self, host, request):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, HTTP_PORT))
 
-        status_line = response.status_code
-        header_data = response.headers.items()
-        file_data = response.content
-        date = formatdate(usegmt=True).encode()
+        sock.sendall(request)
 
-        """
-        response = b"HTTP/1.0 " + str(status_line).encode() + b"\r\n"
-        for k, v in header_data:
-            response += k.encode() + b": " + v.encode() + b"\r\n"
-        response += b"\r\n" + file_data + b"\r\n"
-        """
+        total_data=[]
+        while True:
+            data = sock.recv(8192)
+            if not data:
+                break
+            total_data.append(data)
 
-        response = b"HTTP/1.0 200 OK\r\n" \
-                   b"Date: " + date + b"\r\n" \
-                   b"Server: Barpproxy/1.10.37 (custom)\r\n" \
-                   b"Content-Type: text/html\r\n" \
-                   b"\r\n" + file_data + b"\r\n"
+        sock.close()
 
+        response = b''.join(total_data)
         self.sock.send(response)
 
     # --------------------------------------------------------------------------
