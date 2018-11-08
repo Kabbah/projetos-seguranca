@@ -57,23 +57,23 @@ class ProxyThread(threading.Thread):
         """
         data, parsed_request = self.__get_socket_request()
 
-        print(data)
-        print(parsed_request)
-        print("---------------------------------------------------------------------------")
-
         if data is None or parsed_request is None:
             self.sock.close()
             return
 
+        print("Request: {}".format(parsed_request["Request-Line"]))
+
         try:
             host = parsed_request["Host"]
-            method, file, http_version = parsed_request["Request-Line"].split(" ")
+            method, filename, http_version = parsed_request["Request-Line"].split(" ")
 
             if method in ["HEAD", "GET", "POST", "PUT", "PATCH", "DELETE"]:
-                if "monitorando" not in file:
+                if "monitorando" not in filename:
                     self.__forward_request(host, data)
+                    print("Response: {}".format(parsed_request["Request-Line"]))
                 else:
                     self.__send_unauthorized_page()
+                    print("Unauthorized: {}".format(parsed_request["Request-Line"]))
         except Exception:
             traceback.print_exc()
 
@@ -162,8 +162,14 @@ class ProxyThread(threading.Thread):
     # --------------------------------------------------------------------------
 
     def __forward_request(self, host, request):
+        if ":" in host:
+            host, port = host.split(":")
+            port = int(port)
+        else:
+            port = HTTP_PORT
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((host, HTTP_PORT))
+        sock.connect((host, port))
 
         sock.sendall(request)
 
@@ -243,8 +249,6 @@ class ProxyThread(threading.Thread):
             except ValueError:
                 pass
 
-        print(parsed_http)
-
         if "Content-Length" in parsed_http:
             # Servidor respondeu o tamanho do conteúdo. Lê só o que falta.
             remaining_bytes = int(parsed_http["Content-Length"]) - content_bytes_read
@@ -259,7 +263,7 @@ class ProxyThread(threading.Thread):
             # Não sei como tratar isso. Default para o modo porco.
             while True:
                 chunk = sock.recv(BUFFER_SIZE)
-                if chunk is None:
+                if chunk is None or len(chunk) == 0:
                     break
                 data += chunk
                 content += chunk
@@ -269,7 +273,7 @@ class ProxyThread(threading.Thread):
             # terminar a stream depois de enviar tudo.
             while True:
                 chunk = sock.recv(BUFFER_SIZE)
-                if chunk is None:
+                if chunk is None or len(chunk) == 0:
                     break
                 data += chunk
                 content += chunk
