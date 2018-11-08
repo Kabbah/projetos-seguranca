@@ -169,6 +169,7 @@ class ProxyThread(threading.Thread):
             port = HTTP_PORT
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
         sock.connect((host, port))
 
         sock.sendall(request)
@@ -220,7 +221,10 @@ class ProxyThread(threading.Thread):
         # Lê os headers até encontrar um \r\n\r\n (final dos headers)
         content_bytes_read = 0
         while True:
-            chunk = sock.recv(BUFFER_SIZE)
+            try:
+                chunk = sock.recv(BUFFER_SIZE)
+            except socket.timeout:
+                break
             if chunk is None:
                 if data == b"":
                     return None, None
@@ -262,7 +266,10 @@ class ProxyThread(threading.Thread):
             # Servidor não passou o tamanho do conteúdo, mas usa chunked encoding.
             # Não sei como tratar isso. Default para o modo porco.
             while True:
-                chunk = sock.recv(BUFFER_SIZE)
+                try:
+                    chunk = sock.recv(BUFFER_SIZE)
+                except socket.timeout:
+                    break
                 if chunk is None or len(chunk) == 0:
                     break
                 data += chunk
@@ -272,7 +279,10 @@ class ProxyThread(threading.Thread):
             # Servidor não passou o tamanho e não usa chunked encoding, então deve
             # terminar a stream depois de enviar tudo.
             while True:
-                chunk = sock.recv(BUFFER_SIZE)
+                try:
+                    chunk = sock.recv(BUFFER_SIZE)
+                except socket.timeout:
+                    break
                 if chunk is None or len(chunk) == 0:
                     break
                 data += chunk
